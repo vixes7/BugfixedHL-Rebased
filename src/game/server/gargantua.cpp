@@ -79,11 +79,15 @@ class CStomp : public CBaseEntity
 public:
 	void Spawn(void);
 	void Think(void);
+	int		Save(CSave& save) override;
+	int		Restore(CRestore& restore) override;
+	static	TYPEDESCRIPTION m_SaveData[];
 	static CStomp *StompCreate(const Vector &origin, const Vector &end, float speed);
 
 private:
 	// UNDONE: re-use this sprite list instead of creating new ones all the time
 	//	CSprite		*m_pSprites[ STOMP_SPRITE_COUNT ];
+	float m_flLastThinkTime;
 };
 
 LINK_ENTITY_TO_CLASS(garg_stomp, CStomp);
@@ -103,6 +107,7 @@ CStomp *CStomp::StompCreate(const Vector &origin, const Vector &end, float speed
 
 void CStomp::Spawn(void)
 {
+	m_flLastThinkTime = 0;
 	pev->nextthink = gpGlobals->time;
 	pev->classname = MAKE_STRING("garg_stomp");
 	pev->dmgtime = gpGlobals->time;
@@ -118,6 +123,15 @@ void CStomp::Spawn(void)
 
 void CStomp::Think(void)
 {
+	if (m_flLastThinkTime == 0)
+	{
+		m_flLastThinkTime = gpGlobals->time - gpGlobals->frametime;
+	}
+
+	// Use 1/4th the delta time to match the original behavior more closely
+	const float deltaTime = (gpGlobals->time - m_flLastThinkTime) / 4;
+	m_flLastThinkTime = gpGlobals->time;
+
 	TraceResult tr;
 
 	pev->nextthink = gpGlobals->time + 0.1;
@@ -125,24 +139,24 @@ void CStomp::Think(void)
 	// Do damage for this frame
 	Vector vecStart = pev->origin;
 	vecStart.z += 30;
-	Vector vecEnd = vecStart + (pev->movedir * pev->speed * gpGlobals->frametime);
+	Vector vecEnd = vecStart + (pev->movedir * pev->speed * deltaTime);
 
-	UTIL_TraceHull(vecStart, vecEnd, dont_ignore_monsters, head_hull, ENT(pev), &tr);
+	UTIL_TraceHull( vecStart, vecEnd, dont_ignore_monsters, head_hull, ENT(pev), &tr );
 
-	if (tr.pHit && tr.pHit != pev->owner)
+	if ( tr.pHit && tr.pHit != pev->owner )
 	{
-		CBaseEntity *pEntity = CBaseEntity::Instance(tr.pHit);
+		CBaseEntity *pEntity = CBaseEntity::Instance( tr.pHit );
 		entvars_t *pevOwner = pev;
-		if (pev->owner)
+		if ( pev->owner )
 			pevOwner = VARS(pev->owner);
 
-		if (pEntity)
-			pEntity->TakeDamage(pev, pevOwner, gSkillData.gargantuaDmgStomp, DMG_SONIC);
+		if ( pEntity )
+			pEntity->TakeDamage( pev, pevOwner, gSkillData.gargantuaDmgStomp, DMG_SONIC );
 	}
 
 	// Accelerate the effect
-	pev->speed = pev->speed + (gpGlobals->frametime) * pev->framerate;
-	pev->framerate = pev->framerate + (gpGlobals->frametime) * 1500;
+	pev->speed = pev->speed + deltaTime * pev->framerate;
+	pev->framerate = pev->framerate + deltaTime * 1500;
 
 	// Move and spawn trails
 	while (gpGlobals->time - pev->dmgtime > STOMP_INTERVAL)
@@ -281,6 +295,13 @@ TYPEDESCRIPTION CGargantua::m_SaveData[] = {
 };
 
 IMPLEMENT_SAVERESTORE(CGargantua, CBaseMonster);
+
+TYPEDESCRIPTION	CStomp::m_SaveData[] =
+{
+	DEFINE_FIELD(CStomp, m_flLastThinkTime, FIELD_TIME),
+};
+
+IMPLEMENT_SAVERESTORE(CStomp, CBaseEntity);
 
 const char *CGargantua::pAttackHitSounds[] = {
 	"zombie/claw_strike1.wav",
